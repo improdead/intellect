@@ -1,0 +1,605 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manim.js Test Animation</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <script>
+    // Mock require function for browser
+    function require(module) {
+      if (module === './lib/manim/core.js') {
+        return {
+          setup2D: (p, width = 1200, height = 675, frameRate = 30) => {
+            p.createCanvas(width, height);
+            p.frameRate(frameRate);
+          },
+          setupWebGL: (p, width = 1200, height = 675, frameRate = 30) => {
+            const renderer = p.createCanvas(width, height, p.WEBGL);
+            p.frameRate(frameRate);
+            return { enableOptimizations: () => {} };
+          },
+          BLACK: [0, 0, 0],
+          WHITE: [255, 255, 255],
+          RED: [255, 0, 0],
+          GREEN: [0, 255, 0],
+          BLUE: [0, 0, 255],
+          YELLOW: [255, 255, 0],
+          PURPLE: [128, 0, 128],
+          ORANGE: [255, 165, 0],
+          Animation: class {
+            constructor(p, options = {}) {
+              this.p = p;
+              this.start = options.start || 0;
+              this.duration = options.duration || 60;
+              this.end = this.start + this.duration;
+              this.isPlaying = false;
+            }
+            getProgress() {
+              if (this.p.frameCount < this.start) return 0;
+              if (this.p.frameCount > this.end) return 1;
+              return (this.p.frameCount - this.start) / this.duration;
+            }
+            update() {
+              const progress = this.getProgress();
+              if (progress > 0 && progress < 1) {
+                this.isPlaying = true;
+              } else if (progress >= 1) {
+                this.isPlaying = false;
+              }
+            }
+            show() {
+              this.update();
+            }
+          },
+          TextAnimation: class {
+            constructor(p, options = {}) {
+              this.p = p;
+              this.text = options.text || "";
+              this.x = options.x || p.width / 2;
+              this.y = options.y || p.height / 2;
+              this.color = options.color || [255, 255, 255];
+              this.size = options.size || 32;
+              this.start = options.start || 0;
+              this.duration = options.duration || 60;
+              this.end = this.start + this.duration;
+              this.opacity = 0;
+            }
+            getProgress() {
+              if (this.p.frameCount < this.start) return 0;
+              if (this.p.frameCount > this.end) return 1;
+              return (this.p.frameCount - this.start) / this.duration;
+            }
+            update() {
+              const progress = this.getProgress();
+              if (progress < 0.2) {
+                this.opacity = this.p.map(progress, 0, 0.2, 0, 255);
+              } else if (progress < 0.8) {
+                this.opacity = 255;
+              } else {
+                this.opacity = this.p.map(progress, 0.8, 1, 255, 0);
+              }
+            }
+            show() {
+              this.update();
+              if (this.getProgress() > 0) {
+                this.p.push();
+                this.p.textSize(this.size);
+                this.p.textAlign(this.p.CENTER, this.p.CENTER);
+                this.p.fill(this.color[0], this.color[1], this.color[2], this.opacity);
+                this.p.text(this.text, this.x, this.y);
+                this.p.pop();
+              }
+            }
+          },
+          ShapeAnimation: class {
+            constructor(p, options = {}) {
+              this.p = p;
+              this.type = options.type || 'circle';
+              this.x = options.x || p.width / 2;
+              this.y = options.y || p.height / 2;
+              this.color = options.color || [255, 255, 255];
+              this.size = options.size || 50;
+              this.start = options.start || 0;
+              this.duration = options.duration || 60;
+              this.end = this.start + this.duration;
+              this.opacity = 0;
+              this.scale = 0;
+            }
+            getProgress() {
+              if (this.p.frameCount < this.start) return 0;
+              if (this.p.frameCount > this.end) return 1;
+              return (this.p.frameCount - this.start) / this.duration;
+            }
+            update() {
+              const progress = this.getProgress();
+              if (progress < 0.2) {
+                this.opacity = this.p.map(progress, 0, 0.2, 0, 255);
+                this.scale = this.p.map(progress, 0, 0.2, 0, 1);
+              } else if (progress < 0.8) {
+                this.opacity = 255;
+                this.scale = 1;
+              } else {
+                this.opacity = this.p.map(progress, 0.8, 1, 255, 0);
+                this.scale = 1;
+              }
+            }
+            show() {
+              this.update();
+              if (this.getProgress() > 0) {
+                this.p.push();
+                this.p.fill(this.color[0], this.color[1], this.color[2], this.opacity);
+                this.p.noStroke();
+                if (this.type === 'circle') {
+                  this.p.ellipse(this.x, this.y, this.size * this.scale);
+                } else if (this.type === 'rect') {
+                  this.p.rectMode(this.p.CENTER);
+                  this.p.rect(this.x, this.y, this.size * this.scale, this.size * this.scale);
+                }
+                this.p.pop();
+              }
+            }
+          },
+          EquationAnimation: class {
+            constructor(p, options = {}) {
+              this.p = p;
+              this.latex = options.latex || '';
+              this.x = options.x || p.width / 2;
+              this.y = options.y || p.height / 2;
+              this.color = options.color || [255, 255, 255];
+              this.size = options.size || 32;
+              this.start = options.start || 0;
+              this.duration = options.duration || 60;
+              this.end = this.start + this.duration;
+              this.opacity = 0;
+              
+              // Create a div for KaTeX rendering
+              this.div = document.createElement('div');
+              this.div.style.position = 'absolute';
+              this.div.style.left = '-9999px';
+              this.div.style.top = '-9999px';
+              document.body.appendChild(this.div);
+              
+              // Render LaTeX
+              katex.render(this.latex, this.div, {
+                throwOnError: false,
+                displayMode: options.displayMode || true
+              });
+            }
+            getProgress() {
+              if (this.p.frameCount < this.start) return 0;
+              if (this.p.frameCount > this.end) return 1;
+              return (this.p.frameCount - this.start) / this.duration;
+            }
+            update() {
+              const progress = this.getProgress();
+              if (progress < 0.2) {
+                this.opacity = this.p.map(progress, 0, 0.2, 0, 255);
+              } else if (progress < 0.8) {
+                this.opacity = 255;
+              } else {
+                this.opacity = this.p.map(progress, 0.8, 1, 255, 0);
+              }
+            }
+            show() {
+              this.update();
+              if (this.getProgress() > 0) {
+                this.p.push();
+                this.p.fill(this.color[0], this.color[1], this.color[2], this.opacity);
+                this.p.textSize(this.size);
+                this.p.textAlign(this.p.CENTER, this.p.CENTER);
+                this.p.text(this.latex, this.x, this.y);
+                this.p.pop();
+              }
+            }
+          },
+          GSAPAnimation: class {
+            constructor(p, options = {}) {
+              this.p = p;
+              this.start = options.start || 0;
+              this.duration = options.duration || 60;
+              this.end = this.start + this.duration;
+              this.isPlaying = false;
+              this.timeline = gsap.timeline({ paused: true });
+            }
+            getProgress() {
+              if (this.p.frameCount < this.start) return 0;
+              if (this.p.frameCount > this.end) return 1;
+              return (this.p.frameCount - this.start) / this.duration;
+            }
+            update() {
+              const progress = this.getProgress();
+              if (progress > 0 && progress < 1) {
+                this.isPlaying = true;
+                this.timeline.progress(progress);
+              } else if (progress >= 1) {
+                this.isPlaying = false;
+                this.timeline.progress(1);
+              } else {
+                this.timeline.progress(0);
+              }
+            }
+            show() {
+              this.update();
+            }
+          },
+          GSAPShapeAnimation: class {
+            constructor(p, options = {}) {
+              this.p = p;
+              this.type = options.type || 'circle';
+              this.x = options.x || p.width / 2;
+              this.y = options.y || p.height / 2;
+              this.color = options.color || [255, 255, 255];
+              this.size = options.size || 50;
+              this.start = options.start || 0;
+              this.duration = options.duration || 60;
+              this.end = this.start + this.duration;
+              this.props = { size: 0, opacity: 0 };
+              this.timeline = gsap.timeline({ paused: true });
+              this.timeline.to(this.props, { size: this.size, opacity: 255, duration: 0.5 });
+              this.timeline.to(this.props, { opacity: 0, delay: 0.5, duration: 0.2 });
+            }
+            getProgress() {
+              if (this.p.frameCount < this.start) return 0;
+              if (this.p.frameCount > this.end) return 1;
+              return (this.p.frameCount - this.start) / this.duration;
+            }
+            update() {
+              const progress = this.getProgress();
+              if (progress > 0 && progress < 1) {
+                this.timeline.progress(progress);
+              } else if (progress >= 1) {
+                this.timeline.progress(1);
+              } else {
+                this.timeline.progress(0);
+              }
+            }
+            show() {
+              this.update();
+              if (this.getProgress() > 0) {
+                this.p.push();
+                this.p.fill(this.color[0], this.color[1], this.color[2], this.props.opacity);
+                this.p.noStroke();
+                if (this.type === 'circle') {
+                  this.p.ellipse(this.x, this.y, this.props.size);
+                } else if (this.type === 'rect') {
+                  this.p.rectMode(this.p.CENTER);
+                  this.p.rect(this.x, this.y, this.props.size, this.props.size);
+                }
+                this.p.pop();
+              }
+            }
+          },
+          GSAPTextAnimation: class {
+            constructor(p, options = {}) {
+              this.p = p;
+              this.text = options.text || "";
+              this.x = options.x || p.width / 2;
+              this.y = options.y || p.height / 2;
+              this.color = options.color || [255, 255, 255];
+              this.size = options.size || 32;
+              this.start = options.start || 0;
+              this.duration = options.duration || 60;
+              this.end = this.start + this.duration;
+              this.props = { y: this.y - 50, size: this.size * 0.5, opacity: 0 };
+              this.timeline = gsap.timeline({ paused: true });
+              this.timeline.to(this.props, { y: this.y, size: this.size, opacity: 255, duration: 0.3, ease: 'back.out' });
+              this.timeline.to(this.props, { delay: 0.5, duration: 0 });
+              this.timeline.to(this.props, { y: this.y - 30, opacity: 0, duration: 0.2 });
+            }
+            getProgress() {
+              if (this.p.frameCount < this.start) return 0;
+              if (this.p.frameCount > this.end) return 1;
+              return (this.p.frameCount - this.start) / this.duration;
+            }
+            update() {
+              const progress = this.getProgress();
+              if (progress > 0 && progress < 1) {
+                this.timeline.progress(progress);
+              } else if (progress >= 1) {
+                this.timeline.progress(1);
+              } else {
+                this.timeline.progress(0);
+              }
+            }
+            show() {
+              this.update();
+              if (this.getProgress() > 0) {
+                this.p.push();
+                this.p.textSize(this.props.size);
+                this.p.textAlign(this.p.CENTER, this.p.CENTER);
+                this.p.fill(this.color[0], this.color[1], this.color[2], this.props.opacity);
+                this.p.text(this.text, this.x, this.props.y);
+                this.p.pop();
+              }
+            }
+          },
+          animationCache: {
+            cache: new Map(),
+            getAnimation: (id) => null,
+            cacheAnimation: (id, animation) => {}
+          },
+          createCachedAnimation: (id, creatorFn) => creatorFn(),
+          WebGLOptimizer: class {
+            constructor(renderer) {
+              this.renderer = renderer;
+            }
+            enableOptimizations(p) {}
+          }
+        };
+      }
+      return {};
+    }
+    
+    // Include the generated animation code
+    
+// Generated manim.js animation
+const {
+  setup2D,
+  setupWebGL,
+  BLACK,
+  WHITE,
+  RED,
+  GREEN,
+  BLUE,
+  YELLOW,
+  PURPLE,
+  ORANGE,
+  Animation,
+  TextAnimation,
+  ShapeAnimation,
+  EquationAnimation,
+  GSAPAnimation,
+  GSAPShapeAnimation,
+  GSAPTextAnimation,
+  animationCache,
+  createCachedAnimation,
+  WebGLOptimizer
+} = require('./lib/manim/core.js');
+
+const ManimAnimation = function(p) {
+  let font;
+  let webglOptimizer;
+
+  p.preload = function() {
+    // Load font
+    try {
+      font = p.loadFont('https://cdn.jsdelivr.net/npm/p5/lib/addons/p5.Font.js');
+    } catch (e) {
+      console.warn('Could not load font:', e);
+    }
+  };
+
+  p.setup = function() {
+    // Determine if we need WebGL mode based on content
+    const needsWebGL = false; // This will be set to true if 3D content is detected
+
+    if (needsWebGL) {
+      webglOptimizer = setupWebGL(p);
+      p.isWebGL = true;
+    } else {
+      setup2D(p);
+      p.isWebGL = false;
+    }
+  };
+
+  p.draw = function() {
+    p.background(0);
+
+    // Animation timeline
+
+    // 0:00 - 0:15: Introduction to Mathematical Animations This is a test of the enhanced manim.js library with various animation types.
+
+    // Create a GSAP text animation
+    const text_0_0 = createCachedAnimation('text_0_0', () => {
+      return new GSAPTextAnimation(p, {
+        text: "Introduction to Mathematical Animations This is a",
+        x: p.width/2,
+        y: p.height/2 + -60,
+        color: WHITE,
+        size: 32,
+        start: 0, // Stagger the start times
+        duration: 450
+      });
+    });
+
+    text_0_0.show();
+
+    // Create a GSAP text animation
+    const text_0_1 = createCachedAnimation('text_0_1', () => {
+      return new GSAPTextAnimation(p, {
+        text: "test of the enhanced manim.js library with various",
+        x: p.width/2,
+        y: p.height/2 + -20,
+        color: WHITE,
+        size: 32,
+        start: 5, // Stagger the start times
+        duration: 445
+      });
+    });
+
+    text_0_1.show();
+
+    // Create a GSAP text animation
+    const text_0_2 = createCachedAnimation('text_0_2', () => {
+      return new GSAPTextAnimation(p, {
+        text: "animation types.",
+        x: p.width/2,
+        y: p.height/2 + 20,
+        color: WHITE,
+        size: 32,
+        start: 10, // Stagger the start times
+        duration: 440
+      });
+    });
+
+    text_0_2.show();
+
+    // 0:15 - 0:30: Simple Text Animation Text animations use GSAP for smooth transitions and better easing functions.
+
+    if (p.frameCount >= 450 && p.frameCount <= 900) {
+      p.push();
+
+      // Draw axes
+      p.stroke(WHITE);
+      p.line(p.width/4, p.height*3/4, p.width*3/4, p.height*3/4); // x-axis
+      p.line(p.width/4, p.height/4, p.width/4, p.height*3/4);     // y-axis
+
+      // Draw graph title
+      p.fill(WHITE);
+      p.textSize(32);
+      p.textAlign(p.CENTER, p.CENTER);
+      p.text("Simple Text Animation Text animations use GSAP for smooth transitions and better easing functions.", p.width/2, p.height/6);
+
+      // Draw sample data points
+      p.fill(RED);
+      p.noStroke();
+      for (let i = 0; i < 5; i++) {
+        const x = p.width/4 + (i+1) * p.width/10;
+        const y = p.height*3/4 - p.random(50, 200);
+        p.ellipse(x, y, 10, 10);
+      }
+
+      p.pop();
+    }
+
+    // 0:30 - 0:45: Mathematical Equation Rendering The Pythagorean theorem states that $a^2 + b^2 = c^2$ for right triangles.
+
+    // Create a KaTeX equation animation
+    const equation_900 = createCachedAnimation('equation_900', () => {
+      return new EquationAnimation(p, {
+        latex: "a^2 + b^2 = c^2",
+        x: p.width/2,
+        y: p.height/2,
+        color: YELLOW,
+        size: 40,
+        start: 900,
+        duration: 450,
+        displayMode: true
+      });
+    });
+
+    equation_900.show();
+
+    // 0:45 - 1:00: Complex Equation with KaTeX $$\int_{0}^{\infty} e^{-x^2} dx = \frac{\sqrt{\pi}}{2}$$
+
+    // Create a KaTeX equation animation
+    const equation_1350 = createCachedAnimation('equation_1350', () => {
+      return new EquationAnimation(p, {
+        latex: "Complex Equation with KaTeX $$\int_{0}^{\infty} e^{-x^2} dx = \frac{\sqrt{\pi}}{2}$$",
+        x: p.width/2,
+        y: p.height/2,
+        color: YELLOW,
+        size: 40,
+        start: 1350,
+        duration: 450,
+        displayMode: true
+      });
+    });
+
+    equation_1350.show();
+
+    // 1:00 - 1:15: Shape Animation A circle can be defined as the set of all points equidistant from a center point.
+
+    // Create a GSAP shape animation
+    const shape_1800 = createCachedAnimation('shape_1800', () => {
+      return new GSAPShapeAnimation(p, {
+        type: 'circle',
+        x: p.width/2,
+        y: p.height/2,
+        color: BLUE,
+        size: 200,
+        start: 1800,
+        duration: 315
+      });
+    });
+
+    shape_1800.show();
+
+    // Create a caption for the shape
+    const caption_1800 = createCachedAnimation('caption_1800', () => {
+      return new GSAPTextAnimation(p, {
+        text: "Shape Animation A circle can be defined as the set of all points equidistant from a center point.",
+        x: p.width/2,
+        y: p.height*3/4,
+        color: WHITE,
+        size: 24,
+        start: 1890,
+        duration: 360
+      });
+    });
+
+    caption_1800.show();
+
+    // 1:15 - 1:30: 3D Visualization A sphere is a three-dimensional analog of a circle.
+
+    // Create a GSAP shape animation
+    const shape_2250 = createCachedAnimation('shape_2250', () => {
+      return new GSAPShapeAnimation(p, {
+        type: 'circle',
+        x: p.width/2,
+        y: p.height/2,
+        color: BLUE,
+        size: 200,
+        start: 2250,
+        duration: 315
+      });
+    });
+
+    shape_2250.show();
+
+    // Create a caption for the shape
+    const caption_2250 = createCachedAnimation('caption_2250', () => {
+      return new GSAPTextAnimation(p, {
+        text: "3D Visualization A sphere is a three-dimensional analog of a circle.",
+        x: p.width/2,
+        y: p.height*3/4,
+        color: WHITE,
+        size: 24,
+        start: 2340,
+        duration: 360
+      });
+    });
+
+    caption_2250.show();
+
+    // 1:30 - 1:45: Graph Visualization The function f(x) = x^2 is a parabola that opens upward.
+
+    // Create a KaTeX equation animation
+    const equation_2700 = createCachedAnimation('equation_2700', () => {
+      return new EquationAnimation(p, {
+        latex: "Graph Visualization The function f(x) = x^2 is a parabola that opens upward.",
+        x: p.width/2,
+        y: p.height/2,
+        color: YELLOW,
+        size: 40,
+        start: 2700,
+        duration: 450,
+        displayMode: true
+      });
+    });
+
+    equation_2700.show();
+
+  };
+};
+
+// Export the animation
+
+
+    
+    // Initialize the animation
+    new p5(ManimAnimation);
+  </script>
+</body>
+</html>

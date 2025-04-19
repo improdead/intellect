@@ -1,0 +1,10 @@
+{
+  "trigonometry_unit_circle": {
+    "filename": "trigonometry-unit-circle.svg",
+    "keywords": ["trigonometry", "unit circle", "sin", "cos", "sine", "cosine", "angle", "radians", "math", "geometry"]
+  },
+  "placeholder": {
+    "filename": "placeholder.svg",
+    "keywords": ["test", "placeholder", "example"]
+  }
+}
