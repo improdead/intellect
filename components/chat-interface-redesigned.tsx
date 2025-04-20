@@ -18,6 +18,7 @@ import {
   Video,
   Sparkles,
   Loader2,
+  X,
 } from 'lucide-react';
 import { BookLoader } from './book-loader';
 import { MarkdownRenderer } from './markdown-renderer';
@@ -127,6 +128,8 @@ export default function ChatInterfaceRedesigned({ initialMessage }: ChatInterfac
   const [showWelcomeScreen, setShowWelcomeScreen] = useState(true);
   const [activeTab, setActiveTab] = useState('interactive');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [currentVideoJobId, setCurrentVideoJobId] = useState<string | null>(null);
+  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
 
   // Scroll to bottom of messages
   const scrollToBottom = () => {
@@ -289,11 +292,37 @@ Starting the generation process now...`,
         }),
       };
 
+      // Check if the topic might be problematic
+      if (isTopicPotentiallyProblematic(topic)) {
+        // Add a warning message instead of proceeding with video generation
+        const warningMessage: ChatMessage = {
+          id: messages.length + 3,
+          role: 'assistant',
+          content: `I noticed that your topic "${topic}" might be too general for our video generation system, which could lead to errors. ${suggestMoreSpecificTopic(topic)}
+
+This will help prevent the "'NoneType' object has no attribute 'get'" error that sometimes occurs with general topics.`,
+          timestamp: new Date().toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+        };
+
+        // Add planning message first
+        setMessages((prev) => [...prev, aiPlanningMessage]);
+
+        // Then add the warning
+        setTimeout(() => {
+          setMessages((prev) => [...prev, warningMessage]);
+        }, 1500);
+
+        return;
+      }
+
       // Add planning message
       setMessages((prev) => [...prev, aiPlanningMessage]);
 
       // After a short delay, show the video generation progress
-      setTimeout(() => {
+      setTimeout(async () => {
         // Create a placeholder for the AI response with video generation
         const aiPlaceholder: ChatMessage = {
           id: messages.length + 3,
@@ -310,25 +339,43 @@ Starting the generation process now...`,
 
         setMessages((prev) => [...prev, aiPlaceholder]);
 
-        // Use client-side video generator instead of API
         // Create a message ID for reference
         const messageId = aiPlaceholder.id;
 
-        // Update the message with a client-side video generator component
-        setMessages((prev) =>
-          prev.map(msg =>
-            msg.id === messageId
-              ? {
-                  ...msg,
-                  content: `Generating a video about ${topic}...`,
-                  videoGenerating: true,
-                  videoProgress: 10,
-                }
-              : msg
-          )
-        );
+        // First, try to wake up the backend service
+        try {
+          setMessages((prev) =>
+            prev.map(msg =>
+              msg.id === messageId
+                ? {
+                    ...msg,
+                    content: `Preparing to generate video about ${topic}. First, waking up the backend service...`,
+                  }
+                : msg
+            )
+          );
 
-        // Set up handlers for the client-side generator
+          // Call the wake-up endpoint
+          await fetch('/api/leap-wakeup', {
+            method: 'GET',
+            cache: 'no-store',
+          });
+
+          setMessages((prev) =>
+            prev.map(msg =>
+              msg.id === messageId
+                ? {
+                    ...msg,
+                    content: `Wake-up request sent. Preparing to generate video about ${topic}...`,
+                  }
+                : msg
+            )
+          );
+        } catch (error) {
+          console.log('Error during wake-up request, but continuing:', error);
+        }
+
+        // Set up handlers for updating the UI
         const handleProgress = (progress: number, stage: string) => {
           setMessages((prev) =>
             prev.map(msg =>
@@ -375,35 +422,218 @@ Starting the generation process now...`,
           }, 2000);
         };
 
-        // Render the client-side generator (invisible in the DOM)
-        const videoGenerator = document.createElement('div');
-        videoGenerator.style.display = 'none';
-        document.body.appendChild(videoGenerator);
+        // Assume the service needs to wake up and show a countdown
+        setMessages((prev) =>
+          prev.map(msg =>
+            msg.id === messageId
+              ? {
+                  ...msg,
+                  content: `Waking up the video service... This can take up to 90 seconds since we're using Render's free tier. Please wait...`,
+                }
+              : msg
+          )
+        );
 
-        // Start the client-side generation process
-        setTimeout(() => {
-          // Simulate progress updates
-          let progress = 10;
-          const stages = [
-            'Generating script',
-            'Generating voice narration',
-            'Creating animations',
-            'Rendering frames',
-            'Finalizing video'
-          ];
+        // Wait for the service to start (120 seconds)
+        setTimeout(async () => {
+          try {
+            let countdown = 120;
+            for (let i = 0; i < 24; i++) { // 24 iterations of 5 seconds = 120 seconds
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              countdown -= 5;
 
-          const interval = setInterval(() => {
-            progress += 15;
-            const stageIndex = Math.min(Math.floor(progress / 20), stages.length - 1);
-
-            handleProgress(progress, stages[stageIndex]);
-
-            if (progress >= 100) {
-              clearInterval(interval);
-              handleComplete('https://fs-opennote-us-east-1.s3.us-east-1.amazonaws.com/2025-04-18T15:09:11.338354---1551e7de-1c67-11f0-9c6f-0afffc63bc59---output.mp4');
-              document.body.removeChild(videoGenerator);
+              // Update the message with countdown
+              setMessages((prev) =>
+                prev.map(msg =>
+                  msg.id === messageId
+                    ? {
+                        ...msg,
+                        content: `Waking up the video service... (${countdown}s remaining). Please wait while the service starts up. This may take a while since we're using Render's free tier.`,
+                      }
+                    : msg
+                )
+              );
             }
-          }, 2000);
+
+            // Now try to generate the video
+            setMessages((prev) =>
+              prev.map(msg =>
+                msg.id === messageId
+                  ? {
+                      ...msg,
+                      content: `Generating video about "${topic}"...`,
+                    }
+                  : msg
+              )
+            );
+
+            // Direct API call with no health check
+            const response = await fetch('/api/leap-video', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ topic }),
+            });
+
+            if (!response.ok) {
+              throw new Error(`Video generation failed with status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const jobId = data.job_id;
+
+            // Store the job ID for potential cancellation
+            setCurrentVideoJobId(jobId);
+            setIsGeneratingVideo(true);
+
+            // Start polling for job status
+            let failedStatusChecks = 0;
+            const maxFailedChecks = 5; // Maximum number of consecutive failed status checks before giving up
+
+            const statusInterval = setInterval(async () => {
+              try {
+                // Update UI to show we're checking status
+                setMessages((prev) =>
+                  prev.map(msg =>
+                    msg.id === messageId
+                      ? {
+                          ...msg,
+                          content: `Checking status of video generation for "${topic}"...`,
+                        }
+                      : msg
+                  )
+                );
+
+                const statusResponse = await fetch(`/api/leap-video?jobId=${jobId}`, {
+                  cache: 'no-store',
+                  next: { revalidate: 0 }
+                });
+
+                if (!statusResponse.ok) {
+                  failedStatusChecks++;
+                  if (failedStatusChecks >= maxFailedChecks) {
+                    throw new Error(`Failed to get job status after ${maxFailedChecks} attempts: ${statusResponse.status}`);
+                  }
+                  console.warn(`Status check failed (${failedStatusChecks}/${maxFailedChecks}): ${statusResponse.status}`);
+                  return; // Skip this iteration but don't stop the interval
+                }
+
+                // Reset the counter on successful check
+                failedStatusChecks = 0;
+
+                const statusData = await statusResponse.json();
+
+                // Update progress in UI
+                handleProgress(statusData.progress || 0, statusData.current_stage || 'Processing');
+
+                // If the job is complete or failed, stop polling
+                if (statusData.status === 'completed' || statusData.status === 'failed') {
+                  clearInterval(statusInterval);
+                  setCurrentVideoJobId(null);
+                  setIsGeneratingVideo(false);
+
+                  if (statusData.status === 'completed' && statusData.video_url) {
+                    // Get the full video URL
+                    const videoUrl = statusData.video_url.startsWith('http')
+                      ? statusData.video_url
+                      : `${process.env.NEXT_PUBLIC_VIDEO_API_URL || 'https://backend-intellect-1.onrender.com'}${statusData.video_url}`;
+
+                    // Update UI with completed video
+                    handleComplete(videoUrl);
+                  } else if (statusData.status === 'failed') {
+                    // Create a user-friendly error message based on the specific error
+                    let userFriendlyMessage = '';
+                    const errorMessage = statusData.error || 'Unknown error';
+
+                    if (errorMessage.includes("'NoneType' object has no attribute 'get'")) {
+                      userFriendlyMessage = `Sorry, I encountered a specific error in the video generation process. The backend service is trying to access data that doesn't exist. This is a known issue with the LEAP backend.
+
+To work around this issue, you could:
+1. Try a simpler, more specific topic (e.g., "Newton's First Law of Motion" instead of just "Physics")
+2. Try again later when the service might be more stable
+3. Use the interactive visualization tool instead, which doesn't rely on the same backend process`;
+                    } else if (errorMessage.includes('timeout')) {
+                      userFriendlyMessage = `Sorry, I encountered an error while generating the video. The process timed out. This might be because the video is too complex or the service is under heavy load. Please try a simpler topic or try again later.`;
+                    } else if (errorMessage.includes('memory') || errorMessage.includes('resources')) {
+                      userFriendlyMessage = `Sorry, I encountered an error while generating the video. The backend service ran out of resources. Please try a simpler topic or try again later.`;
+                    } else {
+                      userFriendlyMessage = `Sorry, I encountered an error while generating the video: ${errorMessage}`;
+                    }
+
+                    // Update the message with the error
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id === messageId
+                          ? {
+                              ...msg,
+                              content: userFriendlyMessage,
+                              videoGenerating: false,
+                            }
+                          : msg
+                      )
+                    );
+                  }
+                }
+              } catch (error) {
+                console.error('Error checking video status:', error);
+
+                failedStatusChecks++;
+                if (failedStatusChecks >= maxFailedChecks) {
+                  clearInterval(statusInterval);
+                  setCurrentVideoJobId(null);
+                  setIsGeneratingVideo(false);
+
+                  // Update the message with the error
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === messageId
+                        ? {
+                            ...msg,
+                            content: `Sorry, I encountered an error while checking the status of your video generation. The backend service might be experiencing issues. Please try again in a few minutes.`,
+                            videoGenerating: false,
+                          }
+                        : msg
+                    )
+                  );
+                } else {
+                  // Just log the error but continue trying
+                  console.warn(`Status check error (${failedStatusChecks}/${maxFailedChecks}): ${error.message}`);
+                }
+              }
+            }, 3000); // Check every 3 seconds
+          } catch (error) {
+            console.error('Error starting video generation:', error);
+
+            // Create a user-friendly error message
+            let errorMessage = error.message || 'Unknown error';
+            let userFriendlyMessage = '';
+
+            if (errorMessage.includes('500')) {
+              userFriendlyMessage = `Sorry, I encountered an error while generating the video. The service is currently unavailable. This is likely because the free Render instance is still starting up. Please try again in 3-5 minutes.`;
+            } else if (errorMessage.includes('timeout')) {
+              userFriendlyMessage = `Sorry, I encountered an error while generating the video. The request timed out. This is likely because the free Render instance is taking longer than expected to start up. Please try again in 3-5 minutes.`;
+            } else if (errorMessage.includes('network') || errorMessage.includes('fetch') || errorMessage.includes('connect')) {
+              userFriendlyMessage = `Sorry, I encountered an error while generating the video. There was a network error connecting to the backend service. The service might be offline or still starting up. Please try again in 3-5 minutes.`;
+            } else if (errorMessage.includes('internal error')) {
+              userFriendlyMessage = `Sorry, I encountered an error while generating the video. The backend service reported an internal error. This might be due to the service still initializing. Please try again in 3-5 minutes.`;
+            } else {
+              userFriendlyMessage = `Sorry, I encountered an error while generating the video: ${errorMessage}. Please try again in a few minutes.`;
+            }
+
+            // Update the message with the error
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === messageId
+                  ? {
+                      ...msg,
+                      content: userFriendlyMessage,
+                      videoGenerating: false,
+                    }
+                  : msg
+              )
+            );
+          }
         }, 1000);
       }, 1500);
     } else if (toolId === 'interactive') {
@@ -573,6 +803,67 @@ Starting the generation process now...`,
     }
   };
 
+  // Function to check if a topic might be problematic for video generation
+  const isTopicPotentiallyProblematic = (topic: string): boolean => {
+    // Check if the topic is too short or vague
+    if (topic.length < 5) return true;
+
+    // Check for very general topics that might cause issues
+    const vagueTopics = ['physics', 'math', 'science', 'chemistry', 'biology'];
+    if (vagueTopics.some(vague => topic.toLowerCase() === vague)) return true;
+
+    return false;
+  };
+
+  // Function to suggest a more specific topic
+  const suggestMoreSpecificTopic = (topic: string): string => {
+    const suggestions: Record<string, string[]> = {
+      'physics': ['Newton\'s Laws of Motion', 'Conservation of Energy', 'Projectile Motion', 'Electromagnetic Waves'],
+      'math': ['Pythagorean Theorem', 'Quadratic Equations', 'Calculus Derivatives', 'Probability Theory'],
+      'science': ['Scientific Method', 'Cell Division', 'Chemical Reactions', 'Planetary Motion'],
+      'chemistry': ['Periodic Table Elements', 'Chemical Bonding', 'Acid-Base Reactions', 'Organic Compounds'],
+      'biology': ['DNA Replication', 'Photosynthesis Process', 'Cell Structure', 'Natural Selection']
+    };
+
+    const lowerTopic = topic.toLowerCase();
+    if (suggestions[lowerTopic]) {
+      const randomSuggestions = suggestions[lowerTopic]
+        .sort(() => 0.5 - Math.random())
+        .slice(0, 2);
+      return `Instead of "${topic}", try a more specific topic like "${randomSuggestions[0]}" or "${randomSuggestions[1]}".`;
+    }
+
+    return `Try to make your topic more specific with details about what aspect you want to learn about.`;
+  };
+
+  // Function to cancel video generation
+  const cancelVideoGeneration = async () => {
+    if (!currentVideoJobId) return;
+
+    try {
+      // Call the API to cancel the job
+      const response = await fetch(`/api/leap-video/cancel?jobId=${currentVideoJobId}`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        console.error(`Failed to cancel job: ${response.status}`);
+        return;
+      }
+
+      // Update UI to show cancellation
+      setGeneratingStatus("Video generation cancelled");
+      setTimeout(() => setGeneratingStatus(""), 3000);
+
+      // Reset states
+      setCurrentVideoJobId(null);
+      setIsGeneratingVideo(false);
+
+    } catch (error) {
+      console.error("Error cancelling video generation:", error);
+    }
+  };
+
   const handleExampleSelect = (example: string) => {
     handleSendMessage(example);
   };
@@ -590,7 +881,7 @@ Starting the generation process now...`,
               </AvatarFallback>
             </Avatar>
             <div>
-              <h2 className="text-lg font-medium">Dashboard</h2>
+              <h2 className="text-lg font-medium">Chat</h2>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Sparkles className="h-3 w-3 text-primary" />
                 <span>Your ultimate learning companion</span>
@@ -739,7 +1030,27 @@ Starting the generation process now...`,
                                 {/* Video generation with simplified component */}
                                 {message.videoGenerating && (
                                   <div className="mt-4">
-                                    <SimpleVideoGenerator topic={message.content.replace('Generating a video about ', '').replace('...', '')} />
+                                    <SimpleVideoGenerator
+                                      topic={message.content.replace('Generating a video about ', '').replace('...', '')}
+                                      isGenerating={true}
+                                      progress={message.videoProgress || 0}
+                                      currentStage={message.content.includes('(') ? message.content.split('(')[0].trim() : 'Processing'}
+                                    />
+
+                                    {/* Cancel button for video generation */}
+                                    {isGeneratingVideo && currentVideoJobId && (
+                                      <div className="mt-3 flex justify-center">
+                                        <Button
+                                          variant="destructive"
+                                          size="sm"
+                                          onClick={cancelVideoGeneration}
+                                          className="px-3 py-1 h-8 text-xs rounded-full"
+                                        >
+                                          <X className="h-3 w-3 mr-1" />
+                                          Cancel Video Generation
+                                        </Button>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
 
