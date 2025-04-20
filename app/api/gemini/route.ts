@@ -1,5 +1,5 @@
 import { google } from "@ai-sdk/google";
-import { StreamingTextResponse } from "ai";
+import { StreamingTextResponse } from "ai/stream";
 import { NextRequest } from "next/server";
 
 // Create the Google Generative AI model with safety settings
