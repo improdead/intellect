@@ -1,5 +1,5 @@
 import { google } from "@ai-sdk/google";
-import { StreamingTextResponse } from "ai/stream";
+import { streamText } from "ai";
 import { NextRequest } from "next/server";
 
 // Create the Google Generative AI model with safety settings
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
     headers.set("X-Needs-SVG", needsSvg.toString());
 
     // Return the streaming response with headers
-    return new StreamingTextResponse(stream, { headers });
+    return streamText.toDataStreamResponse(stream, { headers });
   } catch (error) {
     console.error("Error in Gemini API:", error);
     return new Response(
