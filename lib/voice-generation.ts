@@ -1,11 +1,11 @@
-import { ElevenLabs } from 'elevenlabs';
+import { ElevenLabsClient } from 'elevenlabs';
 import fs from 'fs';
 import path from 'path';
 import { uploadFile } from './supabase';
 
 // Initialize Eleven Labs
 const ELEVEN_LABS_API_KEY = process.env.ELEVEN_LABS_API_KEY || 'sk_bffc819ab6425ffdaa3cb93ca2874200a0dc39be57cb6db6db6db';
-const elevenLabs = new ElevenLabs({
+const elevenLabs = new ElevenLabsClient({
   apiKey: ELEVEN_LABS_API_KEY,
 });
 
