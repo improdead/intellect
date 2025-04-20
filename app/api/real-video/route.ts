@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { ElevenLabs } from "elevenlabs";
+import { ElevenLabsClient } from "elevenlabs";
 import fs from 'fs';
 import path from 'path';
 
@@ -13,7 +13,7 @@ const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
 
 // Initialize Eleven Labs
 const ELEVEN_LABS_API_KEY = process.env.ELEVEN_LABS_API_KEY || "sk_bffc819ab6425ffdaa3cb93ca2874200a0dc39be57cb6db6db6db";
-const elevenLabs = new ElevenLabs({
+const elevenLabs = new ElevenLabsClient({
   apiKey: ELEVEN_LABS_API_KEY,
 });
 
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
 
     // Create a job ID
     const jobId = `video_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    
+
     // Initialize job status
     jobStatus.set(jobId, {
       status: "pending",
@@ -97,7 +97,7 @@ async function generateVideo(jobId: string, topic: string) {
     });
 
     const scriptData = await generateScript(topic);
-    
+
     updateJobStatus(jobId, {
       status: "in_progress",
       progress: 30,
@@ -114,7 +114,7 @@ async function generateVideo(jobId: string, topic: string) {
 
     // Prepare the narration text
     const narrationText = `${scriptData.title}. ${scriptData.introduction} `;
-    
+
     let audioUrl = '';
     try {
       // Generate audio using Eleven Labs
@@ -131,16 +131,16 @@ async function generateVideo(jobId: string, topic: string) {
       // Create directory for storing audio
       const audioDir = path.join(process.cwd(), 'public', 'generated', 'audio');
       fs.mkdirSync(audioDir, { recursive: true });
-      
+
       // Save the audio file
       const audioBuffer = await audioResponse.arrayBuffer();
       const audioFileName = `audio_${jobId}.mp3`;
       const audioPath = path.join(audioDir, audioFileName);
       fs.writeFileSync(audioPath, Buffer.from(audioBuffer));
-      
+
       // Set the public URL
       audioUrl = `/generated/audio/${audioFileName}`;
-      
+
       updateJobStatus(jobId, {
         status: "in_progress",
         progress: 60,
@@ -166,7 +166,7 @@ async function generateVideo(jobId: string, topic: string) {
 
     // Simulate image generation
     await new Promise(resolve => setTimeout(resolve, 2000));
-    
+
     // 4. Compose video (simulated for now)
     updateJobStatus(jobId, {
       status: "in_progress",
@@ -176,7 +176,7 @@ async function generateVideo(jobId: string, topic: string) {
 
     // Simulate video composition
     await new Promise(resolve => setTimeout(resolve, 3000));
-    
+
     // 5. Complete the job
     updateJobStatus(jobId, {
       status: "completed",
@@ -208,7 +208,7 @@ async function generateScript(topic: string) {
     // Create a prompt for educational video script
     const prompt = `
     Create a detailed educational script for a 3-5 minute video about "${topic}".
-    
+
     The script should include:
     1. An engaging introduction that explains why this topic is important
     2. 3-5 main sections that break down the key concepts
@@ -218,7 +218,7 @@ async function generateScript(topic: string) {
        - Description of what should be visualized
        - Notes for any mathematical animations that would help explain the concept
     4. A concise conclusion that summarizes the key points
-    
+
     Format your response as a JSON object with the following structure:
     {
       "title": "Main title of the video",
@@ -239,7 +239,7 @@ async function generateScript(topic: string) {
     const result = await model.generateContent(prompt);
     const response = result.response;
     const scriptText = response.text();
-    
+
     // Parse the JSON response
     try {
       // Extract JSON from the response (in case the model adds extra text)
@@ -247,20 +247,20 @@ async function generateScript(topic: string) {
       if (!jsonMatch) {
         throw new Error("No JSON found in response");
       }
-      
+
       const jsonStr = jsonMatch[0];
       const scriptData = JSON.parse(jsonStr);
-      
+
       // Validate the structure
       if (!scriptData.title || !scriptData.introduction || !Array.isArray(scriptData.sections) || !scriptData.conclusion) {
         throw new Error("Invalid script structure");
       }
-      
+
       return scriptData;
     } catch (parseError) {
       console.error("Error parsing script JSON:", parseError);
       console.log("Raw script text:", scriptText);
-      
+
       // Fallback: Return a basic structure if JSON parsing fails
       return {
         title: `Video about ${topic}`,
